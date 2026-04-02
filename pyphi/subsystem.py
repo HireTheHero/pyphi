@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import contextlib
-import functools
 import logging
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
@@ -377,10 +376,8 @@ class Subsystem:
         joint = np.ones(repertoire_shape(self.network.node_indices, purview_set))
         # The cause repertoire is the product of the cause repertoires of the
         # individual nodes.
-        joint *= functools.reduce(
-            np.multiply,
-            [self._single_node_cause_repertoire(m, purview_set) for m in mechanism],
-        )
+        for m in mechanism:
+            joint *= self._single_node_cause_repertoire(m, purview_set)
         # The resulting joint distribution is over previous states, which are
         # rows in the TPM, so the distribution is a column. The columns of a
         # TPM don't necessarily sum to 1, so we normalize.
@@ -456,13 +453,9 @@ class Subsystem:
         # TODO(tpm) Currently the single-node repertoires need to be bare numpy
         # arrays here because reducing with np.multiply throws an error; this
         # should be fixed
-        return joint * functools.reduce(
-            np.multiply,
-            [
-                self._single_node_effect_repertoire(condition, p, direction)
-                for p in purview
-            ],
-        )
+        for p in purview:
+            joint *= self._single_node_effect_repertoire(condition, p, direction)
+        return joint
 
     def effect_repertoire(
         self,
@@ -586,7 +579,10 @@ class Subsystem:
             self.repertoire(direction, part.mechanism, part.purview, **kwargs)
             for part in partition
         ]
-        return functools.reduce(np.multiply, repertoires)
+        result = repertoires[0].copy()
+        for r in repertoires[1:]:
+            result *= r
+        return result
 
     def forward_probability(
         self,

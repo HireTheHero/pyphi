@@ -1,0 +1,1 @@
+Replace `functools.reduce(np.multiply, [...])` with in-place multiplication into the pre-allocated `joint` array in `_cause_repertoire`, `_effect_repertoire`, and `partitioned_repertoire`. Eliminates k−1 temporary array allocations per call where k is the mechanism/purview size.

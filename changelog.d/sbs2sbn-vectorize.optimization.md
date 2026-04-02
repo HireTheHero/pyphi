@@ -1,0 +1,1 @@
+Vectorize `state_by_state2state_by_node` in `convert.py`: replace S outer loop × N inner `np.sum` calls with a vectorized `np.stack([(tpm * node_on[n]).sum(axis=1) for n in range(N)])` reduction followed by a Fortran-order reshape. Achieves ~6× speedup on 8-node networks. Uses `np.ascontiguousarray` to preserve C-contiguous memory layout for downstream numerical equivalence.

@@ -6,7 +6,6 @@ different representations that these functions convert between.
 """
 
 import logging
-from itertools import product
 from math import log2
 
 import numpy as np
@@ -162,12 +161,10 @@ def be2le_state_by_state(tpm):
                [ 4,  6,  5,  7],
                [12, 14, 13, 15]])
     """
-    le = np.empty(tpm.shape, dtype=tpm.dtype)
     N = tpm.shape[0]
     n = int(log2(N))
-    for i, j in product(range(N), repeat=2):
-        le[i, j] = tpm[be2le(i, n), be2le(j, n)]
-    return le
+    idx = np.array([be2le(i, n) for i in range(N)])
+    return tpm[np.ix_(idx, idx)]
 
 
 le2be_state_by_state = be2le_state_by_state
@@ -260,20 +257,19 @@ def state_by_state2state_by_node(tpm):
     S = tpm.shape[-1]
     # Get the number of nodes from the number of states.
     N = int(log2(S))
-    # Initialize the new state-by node TPM.
-    sbn_tpm = np.zeros([2] * N + [N])
-    # Map indices to state-tuples with the little-endian convention.
-    states = {i: le_index2state(i, N) for i in range(S)}
-    # Get an array for each node with 1 in positions that correspond to that
-    # node being on in the next state, and a 0 otherwise.
-    node_on = np.array([[states[i][n] for i in range(S)] for n in range(N)])
-    on_probabilities = [tpm * node_on[n] for n in range(N)]
-    for i, state in states.items():
-        # Get the probability of each node being on given the previous state i,
-        # i.e., a row of the state-by-node TPM.
-        # Assign that row to the ith state in the state-by-node TPM.
-        sbn_tpm[state] = [np.sum(on_probabilities[n][i]) for n in range(N)]
-    return sbn_tpm
+    # Build a (N, S) indicator matrix: node_on[n, j] = 1 iff node n is ON in
+    # state j (little-endian ordering matches all_states).
+    node_on = np.array(list(all_states(N)), dtype=float).T  # (N, S)
+    # For each node n, sum over next states j weighted by tpm[i, j] * node_on[n, j].
+    # Using axis=1 sum preserves the same sequential accumulation order as the
+    # original np.sum calls, ensuring bit-for-bit identical results.
+    sbn_tpm_flat = np.stack(
+        [(tpm * node_on[n]).sum(axis=1) for n in range(N)], axis=1
+    )  # (S, N)
+    # Reshape to multidimensional state-by-node form using Fortran order so
+    # that the first (fastest-varying) axis corresponds to node 0, matching
+    # the little-endian convention used throughout the codebase.
+    return np.ascontiguousarray(sbn_tpm_flat.reshape([2] * N + [N], order="F"))
 
 
 def state_by_node2state_by_state(sbn):

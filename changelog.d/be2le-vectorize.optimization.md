@@ -1,0 +1,1 @@
+Vectorize `be2le_state_by_state` in `convert.py`: replace O(N²) Python loop with a single `np.ix_` fancy-index gather after pre-computing the bit-reversal permutation in O(N). Achieves ~131× speedup on 8-node networks (65,536 → 256 Python iterations).
