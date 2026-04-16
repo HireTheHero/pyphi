@@ -428,3 +428,30 @@ Skip MIP search entirely: compute phi across the partition that maximises graph 
 | Max-modularity proxy | O(N log N) | No | Low | N/A (approximate) |
 
 **Recommended baseline:** implement MI-ordered partition evaluation as a drop-in for the `partitions` argument to `sia()`. It requires no new dependencies, no architectural changes, and is compatible with the existing MapReduce shortcircuit. Measure how often the MIP is found in the first 1% of partitions on the rule-152 benchmark networks.
+
+---
+
+## MI-Ordering Diagnostic (2026-04-16)
+
+Tests whether sorting partitions by a **pairwise MI proxy** (sum of MI(X_i; X_j)
+over all severed edges, under the stationary distribution) concentrates the MIP
+in early ranks.
+
+- **↓MI** = high MI first (strong coupling severed first)
+- **↑MI** = low MI first (weak coupling severed first)
+- **Rand%** = mean rank% under random ordering (10 trials)
+
+Lower rank% = MIP found earlier = greater potential speedup from early stopping.
+
+| N | Network | Partitions | ↓MI rank% | ↑MI rank% | Rand rank% | phi (norm) |
+|---|---|---|---|---|---|---|
+| 4 | micro (IIT 4.0) | 150 | 20.7% | 80.0% | 54.7% ± 27.0% | 0.1665 |
+| 5 | rule152 ring CA | 1,061 | 68.0% | 22.3% | 13.8% ± 10.7% | 0.0692 |
+
+**Key finding:** MI ordering direction is network-type-dependent.
+
+- **Micro (fully-connected stochastic):** ↓MI finds MIP at 20.7% vs 54.7% random → **2.6× speedup potential** if early-stopping is added.
+- **Ring CA (sparse deterministic):** ↓MI is counterproductive (68%); ↑MI gives 22.3% vs 13.8% random — only a modest improvement since ~7 MIP ties already give early random hits.
+
+**Implication:** A single MI-ordering heuristic cannot replace exhaustive search without knowing the network type in advance.  A more robust approach would combine: (1) MI ordering as a prior, (2) branch-and-bound with the first-found phi as an upper bound, and (3) early termination when no remaining partition's MI proxy can improve on the running minimum.
+
