@@ -283,6 +283,19 @@ These are the reference numbers all optimizations are measured against.
 | `be2le_state_by_state` | 8-node, 256×256 random stochastic TPM | 30.1 |
 | `state_by_state2state_by_node` | 8-node, 256×256 random stochastic TPM | 3.0 |
 
+### Fair head-to-head comparison (`script/bench_compare_baseline.py`)
+
+Both old and new implementations inlined in the same Python session, timed against identical inputs (n=300 repetitions, seed 42). No branch switching or import tricks.
+
+| Benchmark | Weak baseline (ms) | Optimized (ms) | Speedup |
+|---|---|---|---|
+| A — `cause_repertoire` (k=5, size=128 mock arrays) | 0.002 | 0.001 | 1.3× |
+| A — `partitioned_repertoire` (k=4, size=128 mock arrays) | 0.001 | 0.001 | ~1× |
+| B — `be2le_state_by_state` (N=8, 256×256) | 51.4 | 0.30 | **172×** |
+| C — `state_by_state2state_by_node` (N=8, 256×256) | 3.4 | 0.70 | **4.9×** |
+
+Change A shows minimal gain because the mock arrays are tiny and the bottleneck in real use is `_single_node_*_repertoire` computation, not the multiply chain. Changes B and C dominate: B is **172×** faster due to eliminating 65,536 Python-loop iterations for the 8-node case.
+
 ### Benchmark conditions
 
 | Parameter | Value |
