@@ -463,8 +463,8 @@ Skip MIP search entirely: evaluate phi only across the partition that maximises 
 | # | Method | Complexity | Exact? | Python? | PyPhi interface | Status |
 |---|---|---|---|---|---|---|
 | B1 | MI-ordering (pairwise proxy) | O(N²·2^N) pre + exhaustive | Yes | ✅ this repo | `sia(partitions=mi_sorted)` | **Done** |
-| B2 | Queyranne min-submodular bipartition | O(N³) | Near-exact | ❌ MATLAB | `sia(partitions=[queyranne_mip])` | To-do |
-| B3 | Louvain community cut | O(N log N) + 1 GID | Approx | ✅ networkx | `sia(partitions=[louvain_cut])` | To-do |
+| B2 | Queyranne min-submodular bipartition | O(N³) | Near-exact | ❌ MATLAB | `sia(partitions=[queyranne_mip])` | **Done** |
+| B3 | Louvain community cut | O(N log N) + 1 GID | Approx | ✅ networkx | `sia(partitions=[louvain_cut])` | **Done** |
 | B4 | CUT_ONE (single-node isolation) | O(N) cuts | Approx upper bound | ✅ PyPhi config (IIT 3.0) | config flag / custom generator | To-do (IIT 4.0 check) |
 | B5 | HDMP memoized search | Sub-exponential | Yes | ❌ paper only | New search driver | Research |
 | B6 | Gaussian / Φ* / Φ_G | O(N³) | No (Gaussian approx) | ❌ MATLAB | Standalone `compute_phi_approx` | Research |
@@ -538,4 +538,36 @@ ring CA, but fails on N=4 micro (wrong bipartition selected by MI proxy).
 use directed bipartitions, or to IIT 4.0 with `DIRECTED_BI` as an approximation.
 For full IIT 4.0 `SET_UNI/BI`, a multi-part extension of the oracle
 (hierarchical bisection or Queyranne on the partition lattice) would be needed.
+
+
+---
+
+## B3 Louvain Community Detection Diagnostic (2026-04-16)
+
+Build a pairwise-MI-weighted graph on the N-node system; run Louvain
+community detection (networkx, fixed seed=42); map communities to
+matching `GeneralSetPartition` direction-variants; evaluate those with
+exact GID and compare against full exhaustive `sia()`.
+
+| N | Communities | Candidates | Speedup | GrpMatch | PhiMatch | True phi | Louv phi | T_full (s) | T_louv (s) |
+|---|---|---|---|---|---|---|---|---|---|
+| 4 | 2 | 3 | 50× | ✗ | ✗ | 1.3318 | 2.6635 | 0.56 | 0.018 |
+| 5 | 1 | 0 | 1061× | ✗ | ✗ | 0.8301 | N/A | 14.47 | 0.000 |
+
+_Communities_: Louvain community count (= partition arity if GrpMatch ✓).
+_Candidates_: GeneralSetPartition objects matching the Louvain grouping
+(all 3^k direction-assignment variants of the same node groups).
+_GrpMatch_: Louvain community grouping == true MIP node grouping.
+_PhiMatch_: phi computed from Louvain candidates == exhaustive phi.
+
+Community assignments per network:
+- N=4: [[0, 1], [2, 3]] (true MIP #parts=4)
+- N=5: [[0, 1, 2, 3, 4]] (true MIP #parts=4)
+
+**Key findings:**
+
+- **N=4 (micro, fully-connected stochastic):** Louvain splits into 2 communities `{0,1}|{2,3}` but the true MIP is a 4-part partition. The Louvain bipartition phi (2.66) is double the true MIP phi (1.33) — the bipartition severs fewer edges per unit normalization than the 4-part split. GrpMatch=✗, PhiMatch=✗.
+- **N=5 (ring CA, sparse deterministic):** The ring topology gives uniform pairwise MI, so Louvain sees no community structure and returns a single all-nodes community. Zero matching candidates — complete fallback required.
+
+**Implication:** Louvain fails on both tested network types for different structural reasons: (1) the true MIP is multi-part so a 2-community split cannot match it; (2) symmetric ring networks have no community structure. Louvain is better suited to networks with clear hierarchical modular organization. For IIT 4.0 the method requires either a resolution-parameter sweep or a multi-resolution strategy to generate multi-part candidate partitions.
 
