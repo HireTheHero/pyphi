@@ -468,10 +468,10 @@ Skip MIP search entirely: evaluate phi only across the partition that maximises 
 | B4 | CUT_ONE (single-node isolation) | 3N evaluations | Approx upper bound | ✅ this repo | filter `SET_UNI/BI` to singleton parts | **Done** |
 | B5 | HDMP memoized search | Sub-exponential | Yes | ❌ paper only | New search driver | Research |
 | B6 | Gaussian / Φ* / Φ_G | O(N³) | No (Gaussian approx) | ❌ MATLAB | Standalone `compute_phi_approx` | Research |
-| B7 | ΦID (integrated synergy) | Polynomial | No (different quantity) | ✅ phyid package | Standalone `compute_phi_approx` | To-do |
+| B7 | ΦID (integrated synergy) | Polynomial | No (different quantity) | ✅ this repo | Standalone `compute_phi_approx` | **Done** |
 | B8 | Max-modularity partition | O(N log N) + 1 GID | No | ✅ networkx | `sia(partitions=[modularity_cut])` | To-do |
 
-**Implemented:** B1 (MI-ordering), B2 (Queyranne), B3 (Louvain), B4 (CUT_ONE). **Remaining:** B7 (ΦID, pip + wrapper).
+**Implemented:** B1 (MI-ordering), B2 (Queyranne), B3 (Louvain), B4 (CUT_ONE), B7 (ΦID). **Remaining:** B8 (max-modularity, optional).
 
 ---
 
@@ -600,4 +600,36 @@ _MIP#(CO)_: number of parts in the best CUT_ONE partition (always 2).
 - **PhiMatch=✗ for both networks**: Both true MIPs are 4-part partitions — structurally unreachable by any 2-part CUT_ONE candidate. CUT_ONE is exact only when the MIP happens to be a singleton-isolation partition (common in IIT 3.0 binary systems but not in these IIT 4.0 networks).
 
 **Implication:** B4 provides a fast upper bound on normalized_phi and a 3N-evaluation approximation that is useful for screening (e.g., if CUT_ONE already finds φ ≈ 0 the system is reducible without full search). For exact IIT 4.0 phi the 4-part MIP structure requires multi-part partition search.
+
+
+---
+
+## B7 ΦID Integrated Synergy Diagnostic (2026-04-16)
+
+Simulate T=20000 steps of the network Markov chain; for each ordered
+pair (i, j) with i≠j compute pairwise ΦID (discrete, MMI redundancy, τ=1);
+sum the `sts` (Syn→Syn) atoms across all N(N-1) pairs to obtain
+system-level integrated synergy ΦID_SYN.  Compare to exhaustive IIT 4.0 Φ.
+
+| N | Pairs | ΦID_SYN | ΦID/pair | True phi | T_sim (s) | T_ΦID (s) | T_full (s) |
+|---|---|---|---|---|---|---|---|
+| 4 | 12 | 0.0019 | 0.0002 | 1.3318 | 0.191 | 0.509 | 0.58 |
+| 5 | 20 | 0.0000 | 0.0000 | 0.8301 | 0.191 | 0.831 | 14.37 |
+
+_ΦID_SYN_: sum of pairwise `sts` atoms across all N(N-1) ordered pairs.
+_ΦID/pair_: per-pair average integrated synergy.
+_T_ΦID_: wall time for all pairwise ΦID computations (no partition search).
+_T_full_: wall time for exhaustive `sia()` (full partition search).
+
+**Key findings:**
+
+- **ΦID_SYN ≈ 0 for both networks** despite non-zero IIT Φ (1.33 and 0.83). Increasing T to 50,000 and switching to CCS redundancy does not materially change the result — pairwise sts is genuinely near zero for these networks under MMI and CCS.
+- **Gaussian approximation** (`kind='gaussian'`) gives NaN on binary time series due to degenerate covariance matrices (binary nodes can have near-zero variance in some pairs). Not applicable.
+- **Divide-by-zero warnings** in discrete mode arise when empirical counts for rare joint states are zero, making local entropy infinite. For small binary systems (2^N possible states), T=20,000 is usually sufficient to cover all states, but the sts atom is still near zero.
+
+**Why ΦID_SYN ≈ 0 for these networks:**
+
+The `sts` atom (Syn→Syn) requires information that is simultaneously synergistic in BOTH the past (pair of source nodes) AND the future (pair of target nodes). For the micro network's near-product-structure TPM (many identical rows), pairwise synergy is negligible. For the deterministic ring CA, future states are functions of exactly 3 local neighbors — no additional synergy is generated beyond what local pairs already capture.
+
+**Implication:** B7 (ΦID via phyid) is not a useful proxy for IIT 4.0 Φ on small binary networks. The literature correlation between ΦID_SYN and Φ holds for larger systems (N >> 8) with near-Gaussian continuous dynamics (neural recordings), not for discrete-binary Markov chains of the type used in IIT theory. For the ConsInfoLLM use case — attention-derived TPMs over selected tokens — the Gaussian approximation may be more appropriate if attention weights are treated as continuous and N is large enough to avoid degenerate covariance.
 
