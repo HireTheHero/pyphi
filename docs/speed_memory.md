@@ -469,9 +469,9 @@ Skip MIP search entirely: evaluate phi only across the partition that maximises 
 | B5 | HDMP memoized search | Sub-exponential | Yes | ❌ paper only | New search driver | Research |
 | B6 | Gaussian / Φ* / Φ_G | O(N³) | No (Gaussian approx) | ❌ MATLAB | Standalone `compute_phi_approx` | Research |
 | B7 | ΦID (integrated synergy) | Polynomial | No (different quantity) | ✅ this repo | Standalone `compute_phi_approx` | **Done** |
-| B8 | Max-modularity partition | O(N log N) + 1 GID | No | ✅ networkx | `sia(partitions=[modularity_cut])` | To-do |
+| B8 | Max-modularity partition | O(N log N) + 1 GID | No | ✅ this repo | `sia(partitions=[modularity_cut])` | **Done** |
 
-**Implemented:** B1 (MI-ordering), B2 (Queyranne), B3 (Louvain), B4 (CUT_ONE), B7 (ΦID). **Remaining:** B8 (max-modularity, optional).
+**All baselines implemented:** B1 (MI-ordering), B2 (Queyranne), B3 (Louvain), B4 (CUT_ONE), B7 (ΦID), B8 (max-modularity). B5/B6 remain research-level (no public code).
 
 ---
 
@@ -632,4 +632,38 @@ _T_full_: wall time for exhaustive `sia()` (full partition search).
 The `sts` atom (Syn→Syn) requires information that is simultaneously synergistic in BOTH the past (pair of source nodes) AND the future (pair of target nodes). For the micro network's near-product-structure TPM (many identical rows), pairwise synergy is negligible. For the deterministic ring CA, future states are functions of exactly 3 local neighbors — no additional synergy is generated beyond what local pairs already capture.
 
 **Implication:** B7 (ΦID via phyid) is not a useful proxy for IIT 4.0 Φ on small binary networks. The literature correlation between ΦID_SYN and Φ holds for larger systems (N >> 8) with near-Gaussian continuous dynamics (neural recordings), not for discrete-binary Markov chains of the type used in IIT theory. For the ConsInfoLLM use case — attention-derived TPMs over selected tokens — the Gaussian approximation may be more appropriate if attention weights are treated as continuous and N is large enough to avoid degenerate covariance.
+
+
+---
+
+## B8 Max-Modularity Partition Diagnostic (2026-04-16)
+
+Build a pairwise-MI-weighted graph; run `greedy_modularity_communities`
+(networkx, deterministic O(E log N)); map communities to matching
+`GeneralSetPartition` direction-variants; evaluate with exact GID vs
+exhaustive `sia()`.  Identical graph construction to B3 (Louvain) but
+using deterministic greedy modularity instead of stochastic Louvain.
+
+| N | Communities | Candidates | Speedup | GrpMatch | PhiMatch | True phi | Mod phi | MIP#(true) | T_full (s) | T_mod (s) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 4 | 2 | 3 | 50× | ✗ | ✗ | 1.3318 | 2.6635 | 4 | 0.57 | 0.018 |
+| 5 | 1 | 0 | 1061× | ✗ | ✗ | 0.8301 | N/A | 4 | 14.64 | 0.000 |
+
+Community assignments per network:
+- N=4: [[0, 1], [2, 3]] (true MIP #parts=4)
+- N=5: [[0, 1, 2, 3, 4]] (true MIP #parts=4)
+
+**Key findings:**
+
+- Greedy modularity produces **identical communities to Louvain (B3)** on
+  both benchmark networks: `{0,1}|{2,3}` for micro (N=4) and one all-node
+  community for ring CA (N=5).
+- Same failure modes as B3: (1) micro's true MIP is 4-part, unreachable by
+  a 2-community cut; (2) ring CA's uniform MI gives no community structure.
+- Greedy modularity is deterministic (no seed) and slightly faster than
+  Louvain for small dense graphs.
+- **Implication**: B8 and B3 are interchangeable on these networks.
+  Max-modularity partitioning is most useful for networks with clear
+  hierarchical structure where the modularity-optimal partition coincides
+  with the MIP — not observed here.
 
