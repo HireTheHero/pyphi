@@ -499,3 +499,43 @@ Lower rank% = MIP found earlier = greater potential speedup from early stopping.
 
 **Implication:** A single MI-ordering heuristic cannot replace exhaustive search without knowing the network type in advance.  A more robust approach would combine: (1) MI ordering as a prior, (2) branch-and-bound with the first-found phi as an upper bound, and (3) early termination when no remaining partition's MI proxy can improve on the running minimum.
 
+
+---
+
+## B2 Queyranne Diagnostic (2026-04-16)
+
+**Mode A (DIRECTED_BI):** Queyranne's natural domain — bipartition-only search
+(`SYSTEM_PARTITION_TYPE='DIRECTED_BI'`).  Queyranne oracle finds the minimum-MI
+bipartition in O(N³) calls; that candidate is verified with exact GID.
+_BiMatch_: Queyranne bipartition equals the exhaustive BI-MIP.
+_PhiMatch_: normalized phi from Q-candidates equals exhaustive BI phi.
+
+**Mode B (full SET_UNI/BI):** Default IIT 4.0 partition scheme.  Reports the
+true MIP partition type.  If MIP #parts > 2, Queyranne's bipartition search
+cannot reach it — a structural limitation for IIT 4.0.
+
+### Mode A — DIRECTED_BI only
+
+| N | BI parts | Q parts | Speedup | BiMatch | PhiMatch | T_BI (s) | T_Q (s) |
+|---|---|---|---|---|---|---|---|
+| 4 | 14 | 2 | 7× | ✗ | ✗ | 0.06 | 0.000 |
+| 5 | 30 | 2 | 15× | ✓ | ✓ | 0.43 | 0.000 |
+
+### Mode B — Full SET_UNI/BI (default IIT 4.0)
+
+| N | Total parts | True phi | MIP #parts | T_full (s) |
+|---|---|---|---|---|
+| 4 | 150 | 1.3318 | 4 | 0.6 |
+| 5 | 1061 | 0.8301 | 4 | 14.3 |
+
+**Key finding:** For both benchmark networks the IIT 4.0 MIP is a 4-part partition
+(MIP #parts = 4), so Queyranne's bipartition search fundamentally cannot reach
+the global MIP under `SET_UNI/BI`.  Within the bipartition-only domain
+(Mode A), Queyranne achieves 15× speedup with correct identification on N=5
+ring CA, but fails on N=4 micro (wrong bipartition selected by MI proxy).
+
+**Implication:** B2 (Queyranne) is directly applicable to IIT 3.0 workflows that
+use directed bipartitions, or to IIT 4.0 with `DIRECTED_BI` as an approximation.
+For full IIT 4.0 `SET_UNI/BI`, a multi-part extension of the oracle
+(hierarchical bisection or Queyranne on the partition lattice) would be needed.
+
