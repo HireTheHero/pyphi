@@ -465,13 +465,13 @@ Skip MIP search entirely: evaluate phi only across the partition that maximises 
 | B1 | MI-ordering (pairwise proxy) | O(N²·2^N) pre + exhaustive | Yes | ✅ this repo | `sia(partitions=mi_sorted)` | **Done** |
 | B2 | Queyranne min-submodular bipartition | O(N³) | Near-exact | ✅ this repo | `sia(partitions=[queyranne_mip])` | **Done** |
 | B3 | Louvain community cut | O(N log N) + 1 GID | Approx | ✅ networkx | `sia(partitions=[louvain_cut])` | **Done** |
-| B4 | CUT_ONE (single-node isolation) | O(N) cuts | Approx upper bound | ✅ PyPhi config (IIT 3.0) | config flag / custom generator | To-do (IIT 4.0 check) |
+| B4 | CUT_ONE (single-node isolation) | 3N evaluations | Approx upper bound | ✅ this repo | filter `SET_UNI/BI` to singleton parts | **Done** |
 | B5 | HDMP memoized search | Sub-exponential | Yes | ❌ paper only | New search driver | Research |
 | B6 | Gaussian / Φ* / Φ_G | O(N³) | No (Gaussian approx) | ❌ MATLAB | Standalone `compute_phi_approx` | Research |
 | B7 | ΦID (integrated synergy) | Polynomial | No (different quantity) | ✅ phyid package | Standalone `compute_phi_approx` | To-do |
 | B8 | Max-modularity partition | O(N log N) + 1 GID | No | ✅ networkx | `sia(partitions=[modularity_cut])` | To-do |
 
-**Implemented:** B1 (MI-ordering), B2 (Queyranne), B3 (Louvain). **Remaining:** B4 (CUT_ONE IIT 4.0 check, config test) → B7 (ΦID, pip + wrapper).
+**Implemented:** B1 (MI-ordering), B2 (Queyranne), B3 (Louvain), B4 (CUT_ONE). **Remaining:** B7 (ΦID, pip + wrapper).
 
 ---
 
@@ -570,4 +570,34 @@ Community assignments per network:
 - **N=5 (ring CA, sparse deterministic):** The ring topology gives uniform pairwise MI, so Louvain sees no community structure and returns a single all-nodes community. Zero matching candidates — complete fallback required.
 
 **Implication:** Louvain fails on both tested network types for different structural reasons: (1) the true MIP is multi-part so a 2-community split cannot match it; (2) symmetric ring networks have no community structure. Louvain is better suited to networks with clear hierarchical modular organization. For IIT 4.0 the method requires either a resolution-parameter sweep or a multi-resolution strategy to generate multi-part candidate partitions.
+
+
+---
+
+## B4 CUT_ONE Diagnostic (IIT 4.0, 2026-04-16)
+
+Filter the full `SET_UNI/BI` partition list to 2-part `GeneralSetPartition`
+objects where one group is a singleton node.  The `unique()` deduplication in
+`unidirectional_set_partitions` collapses the 3² = 9 raw direction combos down
+to **3 distinct cut matrices per singleton** (cut edges into singleton, cut
+edges out of singleton, cut both), giving **3N total candidates**.
+
+Candidates are evaluated with exact GID and compared against exhaustive `sia()`.
+
+| N | All parts | CO parts | Expected | Speedup | UpperBound | PhiMatch | True phi | CO phi | MIP#(true) | MIP#(CO) | T_full (s) | T_CO (s) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 4 | 150 | 12 | 12 | 12× | ✓ | ✗ | 1.3318 | 0.6659 | 4 | 2 | 0.57 | 0.053 |
+| 5 | 1061 | 15 | 15 | 71× | ✓ | ✗ | 0.8301 | 0.4150 | 4 | 2 | 14.47 | 0.228 |
+
+_UpperBound_: `co_normalized_phi ≥ full_normalized_phi` — always holds because CUT_ONE ⊆ all_partitions and `sia()` minimizes normalized_phi.
+_PhiMatch_: exact MIP found within CUT_ONE candidates.
+_MIP#(CO)_: number of parts in the best CUT_ONE partition (always 2).
+
+**Key findings:**
+
+- **Speedup**: 12× (N=4) and 71× (N=5) — evaluating only 3N candidates vs Bell(N). Scales well: N=6 gives 54 candidates vs 7,896 (146×).
+- **CO phi < true phi**: The singleton-isolation partition severs fewer connections per normalization than the 4-part MIP. The normalized_phi ordering is correctly preserved (UpperBound=✓), but the raw phi values are not directly comparable across partition types.
+- **PhiMatch=✗ for both networks**: Both true MIPs are 4-part partitions — structurally unreachable by any 2-part CUT_ONE candidate. CUT_ONE is exact only when the MIP happens to be a singleton-isolation partition (common in IIT 3.0 binary systems but not in these IIT 4.0 networks).
+
+**Implication:** B4 provides a fast upper bound on normalized_phi and a 3N-evaluation approximation that is useful for screening (e.g., if CUT_ONE already finds φ ≈ 0 the system is reducible without full search). For exact IIT 4.0 phi the 4-part MIP structure requires multi-part partition search.
 
