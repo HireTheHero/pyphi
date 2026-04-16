@@ -471,7 +471,7 @@ Skip MIP search entirely: evaluate phi only across the partition that maximises 
 | B7 | ΦID (integrated synergy) | Polynomial | No (different quantity) | ✅ phyid package | Standalone `compute_phi_approx` | To-do |
 | B8 | Max-modularity partition | O(N log N) + 1 GID | No | ✅ networkx | `sia(partitions=[modularity_cut])` | To-do |
 
-**Recommended implementation order:** B3 (Louvain, 10 lines) → B4 (CUT_ONE IIT 4.0 check, config test) → B2 (Queyranne, ~80 lines numpy) → B7 (ΦID, pip + wrapper).
+**Implemented:** B1 (MI-ordering), B2 (Queyranne), B3 (Louvain). **Remaining:** B4 (CUT_ONE IIT 4.0 check, config test) → B7 (ΦID, pip + wrapper).
 
 ---
 
