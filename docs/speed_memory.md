@@ -271,6 +271,18 @@ This is the single highest-leverage architectural change in the hot path. The TO
 
 The three highest-ROI items from the combined summary table were implemented and benchmarked. All measurements are wall-clock time per call, averaged over 200 repetitions (`timeit`, n=200, one warm-up call) on an Apple M-series CPU running Python 3.12.
 
+### Weak baseline (pre-optimization)
+
+Timings recorded on the unmodified codebase before any changes were applied.
+These are the reference numbers all optimizations are measured against.
+
+| Function | Network | Weak baseline (ms/call) |
+|---|---|---|
+| `cause_repertoire` | 7-node fully-connected, state all-zeros | 0.015 |
+| `effect_repertoire` | 7-node fully-connected, state all-zeros | 0.035 |
+| `be2le_state_by_state` | 8-node, 256×256 random stochastic TPM | 30.1 |
+| `state_by_state2state_by_node` | 8-node, 256×256 random stochastic TPM | 3.0 |
+
 ### Benchmark conditions
 
 | Parameter | Value |
