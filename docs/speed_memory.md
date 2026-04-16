@@ -463,7 +463,7 @@ Skip MIP search entirely: evaluate phi only across the partition that maximises 
 | # | Method | Complexity | Exact? | Python? | PyPhi interface | Status |
 |---|---|---|---|---|---|---|
 | B1 | MI-ordering (pairwise proxy) | O(N²·2^N) pre + exhaustive | Yes | ✅ this repo | `sia(partitions=mi_sorted)` | **Done** |
-| B2 | Queyranne min-submodular bipartition | O(N³) | Near-exact | ❌ MATLAB | `sia(partitions=[queyranne_mip])` | **Done** |
+| B2 | Queyranne min-submodular bipartition | O(N³) | Near-exact | ✅ this repo | `sia(partitions=[queyranne_mip])` | **Done** |
 | B3 | Louvain community cut | O(N log N) + 1 GID | Approx | ✅ networkx | `sia(partitions=[louvain_cut])` | **Done** |
 | B4 | CUT_ONE (single-node isolation) | O(N) cuts | Approx upper bound | ✅ PyPhi config (IIT 3.0) | config flag / custom generator | To-do (IIT 4.0 check) |
 | B5 | HDMP memoized search | Sub-exponential | Yes | ❌ paper only | New search driver | Research |
