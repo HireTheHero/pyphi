@@ -372,62 +372,106 @@ No ordering, bounding, or heuristic pruning of the partition space is implemente
 
 ---
 
-### External proposals
+### Baseline catalogue
 
-#### Queyranne's algorithm — O(N³) exact MIP for submodular measures
-**Refs:** Hidaka & Oizumi (2018) [PMC7512690](https://pmc.ncbi.nlm.nih.gov/articles/PMC7512690/); Kitazono, Kanai & Oizumi (2018) [PMC6133274](https://pmc.ncbi.nlm.nih.gov/articles/PMC6133274/)
-
-For measures that are **submodular** (mutual information satisfies this; GID used by IIT 4.0 does not), Queyranne's algorithm finds the exact MIP among all bipartitions in O(N³) instead of O(2^N). Empirically it finds the correct MIP >98% of the time even for non-submodular measures.
-
-**Applicability to PyPhi:** GID is not submodular, so Queyranne cannot replace the exact search. However, mutual information (MI) is cheap to compute for all bipartitions (O(N²)) and could be used to **order** partitions before GID evaluation — feeding the MapReduce loop in ascending-MI order so the weakest partition (likely the MIP) is evaluated first, triggering early exit via the existing shortcircuit. The pluggable `partitions` argument in `sia()` ([`new_big_phi/__init__.py:538–555`](../pyphi/new_big_phi/__init__.py#L538)) supports this without any architectural change.
-
-**Implementation:** [PhiToolbox](https://github.com/oizumi-lab/PhiToolbox) (MATLAB). Not in PyPhi.
+Each entry covers: the paper reference, what the method computes, its complexity, whether Python code exists, and how it plugs into PyPhi's `sia(partitions=...)` interface.
 
 ---
 
-#### HDMP — Heuristic-Driven Memoization Process
-**Ref:** Mendieta, Arango-López & Castillo (2024) [Springer](https://link.springer.com/chapter/10.1007/978-3-031-75233-9_16)
+#### B1 — MI-ordering (pairwise MI proxy) ✅ implemented
+**Refs:** Kitazono, Kanai & Oizumi (2018) [doi:10.3390/e20030173](https://doi.org/10.3390/e20030173); Hidaka & Oizumi (2018) [PMC7512690](https://pmc.ncbi.nlm.nih.gov/articles/PMC7512690/)  
+**Complexity:** O(N² · 2^N) preprocessing, then exhaustive GID evaluation  
+**Exact:** Yes (exhaustive GID still runs; ordering is a heuristic)  
+**Python:** `script/bench_mi_ordering.py` in this repo
 
-Top-down recursive partition search with memoization: uses a cost-matrix heuristic to order which subpartitions to evaluate first, pruning dominated branches. Reported >90% runtime reduction at N≈200 compared to exhaustive search.
-
-**Applicability:** General-purpose; does not require submodularity. Most promising for large N where exhaustive search is completely infeasible.
-
-**Implementation:** Research prototype only. Not in PyPhi.
-
----
-
-#### Gaussian / spectral approximations — O(N³)
-**Refs:** Tegmark (2016) [arXiv:1601.02626](https://arxiv.org/abs/1601.02626); Oizumi, Tsuchiya & Amari (2016) [PNAS](https://doi.org/10.1073/pnas.1603583113); Oizumi et al. (2016) [PLOS Comp Bio](https://doi.org/10.1371/journal.pcbi.1004654)
-
-Replace the discrete TPM with a Gaussian approximation; all phi variants then reduce to operations on 2N×2N covariance matrices. Exact for linear-Gaussian systems; an approximation for discrete networks.
-
-**Applicability:** Attention-derived TPMs from LLMs are stochastic and dense — the Gaussian assumption is a rough approximation. Useful as a fast screening tool but not a substitute for exact PyPhi results.
-
-**Implementation:** [PhiToolbox](https://github.com/oizumi-lab/PhiToolbox) (MATLAB).
+Precompute an N×N pairwise MI matrix under the stationary distribution; score each partition by summing MI over its cut edges; sort partitions and pass to `sia(partitions=sorted_iter)`. Benchmarked on micro (N=4) and rule-152 ring CA (N=5): high-MI-first gives 2.6× speedup potential on the micro network; ring CA favours low-MI-first. Direction is network-type-dependent — neither ordering dominates universally.
 
 ---
 
-#### Max-modularity fixed partition — O(N log N) proxy
-**Ref:** Toker & Sommer (2016) [arXiv:1605.01096](https://arxiv.org/abs/1605.01096)
+#### B2 — Queyranne's algorithm (exact min-submodular-bipartition)
+**Refs:** Queyranne (1998) [doi:10.1287/moor.23.3.695](https://doi.org/10.1287/moor.23.3.695); Kitazono et al. (2018) [doi:10.3390/e20030173](https://doi.org/10.3390/e20030173)  
+**Complexity:** O(N³) bipartition evaluations; GID still needed to verify  
+**Exact:** Near-exact (>98% correct MIP empirically even for non-submodular GID)  
+**Python:** MATLAB only ([oizumi-lab/PhiToolbox](https://github.com/oizumi-lab/PhiToolbox)); ~80 lines to port
 
-Skip MIP search entirely: compute phi across the partition that maximises graph modularity (community structure). Correlates well with MIP-phi in practice.
-
-**Applicability:** An approximation, not exact. Suitable when only a relative ordering of phi values is needed (e.g., comparing conditions in ConsInfoLLM), not when the exact MIP partition is required.
-
-**Implementation:** Research code only.
+Finds the bipartition that minimises any **submodular** function (MI, stochastic interaction) in O(N³) via vertex contraction. Use MI as the submodular proxy → O(N³) candidate MIP → verify that one partition with exact GID. The pluggable `partitions` arg in `sia()` accepts the single candidate directly: `sia(partitions=[queyranne_mip(subsystem)])`.
 
 ---
 
-### Summary and recommended next step
+#### B3 — Louvain community cut (single-candidate approximation)
+**Refs:** Blondel et al. (2008) [doi:10.1088/1742-5468/2008/10/P10008](https://doi.org/10.1088/1742-5468/2008/10/P10008); Nilsen et al. (2019) [doi:10.3390/e21050525](https://doi.org/10.3390/e21050525)  
+**Complexity:** O(N log N) community detection + one GID evaluation  
+**Exact:** Approximate (r > 0.95 with exact phi on binary systems ≤ 8 nodes, Nilsen et al.)  
+**Python:** `networkx.community.louvain_communities` (already a transitive dep)
 
-| Approach | Complexity | Exact? | PyPhi effort | Likely gain at N=7 |
-|---|---|---|---|---|
-| MI-ordered partition evaluation (Queyranne proxy) | O(N²) preprocessing | Yes | Low — plug into existing `partitions` arg | High if MIP is a weak partition |
-| HDMP memoization | Sub-exponential | Yes | Medium — new search driver | Very high |
-| Gaussian approximation | O(N³) | No | Medium — new TPM pathway | N/A (approximate) |
-| Max-modularity proxy | O(N log N) | No | Low | N/A (approximate) |
+Run Louvain community detection on the subsystem's connectivity matrix; convert the two-community result into a `SystemPartition`; evaluate only that one partition: `sia(partitions=[louvain_cut(subsystem)])`. Ten lines of code, no new dependencies.
 
-**Recommended baseline:** implement MI-ordered partition evaluation as a drop-in for the `partitions` argument to `sia()`. It requires no new dependencies, no architectural changes, and is compatible with the existing MapReduce shortcircuit. Measure how often the MIP is found in the first 1% of partitions on the rule-152 benchmark networks.
+---
+
+#### B4 — CUT_ONE / single-node-isolating cuts
+**Refs:** Oizumi et al. (2014) [doi:10.1371/journal.pcbi.1003588](https://doi.org/10.1371/journal.pcbi.1003588) (original phi); Mayner et al. (2018) [arXiv:1712.09644](https://arxiv.org/abs/1712.09644) (PyPhi, IIT 3.0 config)  
+**Complexity:** O(N) cuts instead of O(2^N)  
+**Exact:** Approximate upper bound on phi  
+**Python:** `config.CUT_ONE_APPROXIMATION = True` in IIT 3.0; IIT 4.0 status unchecked
+
+For each node i, evaluate only the partition that isolates node i from all others (severs all edges to/from i). The minimum phi over these N cuts is an upper bound on exact phi. Already wired in IIT 3.0 via config; worth checking whether the same config flag applies to IIT 4.0's `SET_UNI/BI` partition scheme (may require generating only `GeneralSetPartition` objects with single-node parts).
+
+---
+
+#### B5 — HDMP (Heuristic-Driven Memoization Process)
+**Ref:** Mendieta, Arango-López & Castillo (2024) [doi:10.1007/978-3-031-75233-9_16](https://doi.org/10.1007/978-3-031-75233-9_16)  
+**Complexity:** Sub-exponential (memoization prunes dominated subpartitions)  
+**Exact:** Yes (same phi value as exhaustive search)  
+**Python:** Research prototype only; no public repo
+
+Top-down recursive MIP search with a cost-matrix heuristic that orders which subpartitions to expand first, pruning branches dominated by the current best. Reported >90% runtime reduction at N≈200. Most promising for large N where exhaustive search is infeasible. Would require a new search driver replacing the flat MapReduce loop.
+
+---
+
+#### B6 — Gaussian / Φ* / Φ_G approximations
+**Refs:** Tegmark (2016) [arXiv:1601.02626](https://arxiv.org/abs/1601.02626); Oizumi, Tsuchiya & Amari (2016) [doi:10.1073/pnas.1603583113](https://doi.org/10.1073/pnas.1603583113); Oizumi et al. (2016) [doi:10.1371/journal.pcbi.1004654](https://doi.org/10.1371/journal.pcbi.1004654)  
+**Complexity:** O(N³) (covariance matrix operations, no partition search)  
+**Exact:** No — approximation under Gaussian assumption  
+**Python:** MATLAB only ([PhiToolbox](https://github.com/oizumi-lab/PhiToolbox)); straightforward numpy port
+
+Replace the discrete TPM with a 2N×2N covariance matrix; phi variants (Φ*, Φ_G, stochastic interaction SI) reduce to log-det operations or KL divergences between Gaussians. No partition enumeration — the MIP is found analytically. Exact for linear-Gaussian systems; a rough approximation for LLM attention TPMs (which are stochastic-dense, not linear-Gaussian).
+
+---
+
+#### B7 — ΦID — Integrated Information Decomposition
+**Refs:** Mediano, Rosas et al. (2021) [arXiv:2109.13186](https://arxiv.org/abs/2109.13186); PNAS 2025 [doi:10.1073/pnas.2423297122](https://doi.org/10.1073/pnas.2423297122)  
+**Complexity:** Polynomial in N (PID lattice over source pairs)  
+**Exact:** No — different quantity (decomposes transfer entropy, not GID-phi)  
+**Python:** [`Imperial-MIND-lab/integrated-info-decomp`](https://github.com/Imperial-MIND-lab/integrated-info-decomp) (`pip install`)
+
+Decomposes transfer entropy into synergistic, redundant, and unique "atoms" via partial information decomposition — no partition search at all. The "integrated synergy" atom is empirically correlated with IIT phi and interpretable as the unique information generated by the whole that is not present in any part. Useful as a `compute_phi_approximate(tpm)` path for systems too large for exact PyPhi (N > 10).
+
+---
+
+#### B8 — Max-modularity fixed partition
+**Ref:** Toker & Sommer (2016) [arXiv:1605.01096](https://arxiv.org/abs/1605.01096)  
+**Complexity:** O(N log N)  
+**Exact:** No — approximation  
+**Python:** `networkx.community` (already present); research code only for the phi evaluation wrapper
+
+Skip MIP search entirely: evaluate phi only across the partition that maximises graph modularity. Correlates well with MIP-phi in practice; suitable when only a relative ordering of phi values is needed across conditions (e.g., task-relevant vs. random-baseline tokens in ConsInfoLLM), not when the exact MIP partition is required.
+
+---
+
+### Feature summary table
+
+| # | Method | Complexity | Exact? | Python? | PyPhi interface | Status |
+|---|---|---|---|---|---|---|
+| B1 | MI-ordering (pairwise proxy) | O(N²·2^N) pre + exhaustive | Yes | ✅ this repo | `sia(partitions=mi_sorted)` | **Done** |
+| B2 | Queyranne min-submodular bipartition | O(N³) | Near-exact | ❌ MATLAB | `sia(partitions=[queyranne_mip])` | To-do |
+| B3 | Louvain community cut | O(N log N) + 1 GID | Approx | ✅ networkx | `sia(partitions=[louvain_cut])` | To-do |
+| B4 | CUT_ONE (single-node isolation) | O(N) cuts | Approx upper bound | ✅ PyPhi config (IIT 3.0) | config flag / custom generator | To-do (IIT 4.0 check) |
+| B5 | HDMP memoized search | Sub-exponential | Yes | ❌ paper only | New search driver | Research |
+| B6 | Gaussian / Φ* / Φ_G | O(N³) | No (Gaussian approx) | ❌ MATLAB | Standalone `compute_phi_approx` | Research |
+| B7 | ΦID (integrated synergy) | Polynomial | No (different quantity) | ✅ phyid package | Standalone `compute_phi_approx` | To-do |
+| B8 | Max-modularity partition | O(N log N) + 1 GID | No | ✅ networkx | `sia(partitions=[modularity_cut])` | To-do |
+
+**Recommended implementation order:** B3 (Louvain, 10 lines) → B4 (CUT_ONE IIT 4.0 check, config test) → B2 (Queyranne, ~80 lines numpy) → B7 (ΦID, pip + wrapper).
 
 ---
 
