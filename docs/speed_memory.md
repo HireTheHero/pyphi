@@ -667,3 +667,57 @@ Community assignments per network:
   hierarchical structure where the modularity-optimal partition coincides
   with the MIP — not observed here.
 
+---
+
+## Weak Baseline — Exhaustive Search Reference
+
+The weak baseline is exhaustive `sia()` with no pruning or ordering: every
+`SET_UNI/BI` partition is evaluated with exact GID in arbitrary order.
+This is the reference all B-baselines are measured against.
+
+### Exhaustive timing (rule-152 ring CA, sequential, cache on)
+
+| N | Partitions | Time (s) | ms / partition | Cumulative factor vs N=4 |
+|---|---|---|---|---|
+| 4 | 150 | 0.6 | 4 | 1× |
+| 5 | 1,061 | 15 | 14 | 25× |
+| 6 | 7,896 | 492 | 62 | 820× |
+| 7 | 61,888 | >7,200 (timeout) | ~264 (est.) | >12,000× |
+
+Each additional node multiplies runtime by ~32× (7.8× more partitions × 4.2×
+higher per-partition cost). N=7 is projected at ~4.5 h; N=8 at ~150 h sequential.
+
+### Baseline comparison summary (N=4 micro, N=5 ring CA)
+
+All B-baselines are run against the same two networks where the weak baseline
+takes 0.57 s (N=4) and 14.5 s (N=5). PhiMatch=✓ means the baseline finds the
+exact MIP phi; UpperBound means it provably bounds normalized_phi from above.
+
+| Baseline | N=4 cands | N=4 T (s) | N=4 exact? | N=5 cands | N=5 T (s) | N=5 exact? | Notes |
+|---|---|---|---|---|---|---|---|
+| **Exhaustive (weak baseline)** | **150** | **0.57** | **✓** | **1,061** | **14.5** | **✓** | Reference |
+| B1 MI-ordering | 150 | 0.57 | ✓ | 1,061 | 14.5 | ✓ | Reorders only; speedup if early-stop added (2.6× on micro, weak on ring CA) |
+| B2 Queyranne (BI-only) | 2 | 0.000 | ✗ (N=4) / ✓ (N=5) | 2 | 0.000 | ✓ | BI-only; IIT 4.0 MIP unreachable (4-part) |
+| B3 Louvain | 3 | 0.018 | ✗ | 0 | 0.000 | ✗ | Ring CA → 1 community; no candidates |
+| B4 CUT_ONE | 12 | 0.053 | ✗ | 15 | 0.228 | ✗ | Correct upper bound on norm-phi; MIP is 4-part |
+| B7 ΦID | — | 0.51 | ✗ | — | 0.83 | ✗ | Different quantity; ΦID_SYN ≈ 0 for both |
+| B8 Max-modularity | 3 | 0.018 | ✗ | 0 | 0.000 | ✗ | Identical to B3 on these networks |
+
+**Summary of findings against the weak baseline:**
+
+- **No baseline achieves exact phi on both networks.** The fundamental obstacle
+  is that both IIT 4.0 MIPs are 4-part partitions — all graph-community methods
+  (B2 bipartition, B3 Louvain, B8 modularity) are structurally unable to reach them.
+- **B4 CUT_ONE** is the only partition-reducing baseline that provides a
+  *correctness guarantee* (upper bound on normalized_phi), at 12×–71× speedup.
+  It does not find the exact MIP but correctly identifies whether a system is
+  irreducible.
+- **B1 MI-ordering** preserves exactness (full exhaustive search) and offers
+  2.6× early-stop speedup on the fully-connected stochastic network, but is
+  counterproductive on the ring CA.
+- **B7 ΦID** is the only partition-free approach; it is fast (sub-second) but
+  measures a different quantity and is uncalibrated for small binary systems.
+- The weak baseline remains the only method that reliably finds the exact MIP
+  for IIT 4.0 `SET_UNI/BI`. Beating it exactly requires either a multi-part
+  extension of Queyranne/Louvain or a bounding strategy (HDMP, B5).
+
